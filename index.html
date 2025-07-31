@@ -4,16 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Riftbound Booster Opener</title>
-    <!-- Tailwind CSS CDN for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Custom styles for Inter font and background */
         body {
             font-family: 'Inter', sans-serif;
             background-color: #1e1e1e; /* Dark background */
             color: white;
         }
-        /* Hide scrollbar for a cleaner look, but allow scrolling */
         .hide-scrollbar::-webkit-scrollbar {
             display: none;
         }
@@ -25,22 +22,18 @@
 </head>
 <body class="flex flex-col min-h-screen">
     <div id="app-container" class="flex flex-col items-center justify-center flex-grow p-4">
-        <!-- Central area for single card display during opening -->
         <div id="central-card-area" class="flex flex-col items-center justify-center flex-grow">
             <img id="pile-image" class="rounded-lg shadow-lg cursor-pointer transition-transform duration-200 hover:scale-105"
                  src="" alt="Card Back" style="width: 400px; height: 560px;">
             <p id="card-name" class="mt-4 text-xl font-bold text-center"></p>
         </div>
 
-        <!-- Final grid display area (initially hidden) -->
         <div id="final-grid-area" class="hidden flex-grow w-full overflow-y-auto hide-scrollbar p-4">
             <div id="card-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 justify-items-center">
-                <!-- Cards will be injected here by JavaScript -->
             </div>
         </div>
     </div>
 
-    <!-- Button to open new booster -->
     <div class="p-4 flex justify-center">
         <button id="open-booster-btn"
                 class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg
@@ -58,16 +51,10 @@
         const REVEALED_IMG_WIDTH = 400;
         const REVEALED_IMG_HEIGHT = 560;
 
-        // Defines the order of categories for sorting cards in the final display grid.
         const CATEGORY_SORT_ORDER = [
             "Common", "Uncommon", "Rare", "Epic", "Legendary",
             "Battlefield", "TokenRune", "LegendaryRune"
         ];
-
-        // --- Mock Card Data (Replace with actual data loaded from JSON in a real scenario) ---
-        // In a real application, you'd fetch your 'riftbound_origins.json' here:
-        // For this example, we'll use a small, hardcoded set of mock data.
-        
 
         // --- UI Elements ---
         const centralCardArea = document.getElementById('central-card-area');
@@ -79,10 +66,10 @@
 
         // --- Application State ---
         let categorizedCards = {};
-        let boosterCardsFlat = []; // All cards in the current booster, flattened and ordered for revelation
-        let openedCardsInBooster = []; // Cards that have been revealed and "stored"
-        let currentCardToRevealIndex = 0; // Index of the next card to reveal
-        let appState = "initial"; // "initial", "waiting_for_first_reveal", "card_revealed", "finished_revealing"
+        let boosterCardsFlat = []; 
+        let openedCardsInBooster = [];
+        let currentCardToRevealIndex = 0; 
+        let appState = "initial"; 
         let cardData = [];
 
         // --- Card Data Processing ---
@@ -205,7 +192,6 @@
                 return CARD_BACK_PATH;
             } else {
                 let cardNumberToUse = card.card_number;
-                // Adjust card number for signed card filenames (* vs s)
                 if (card.is_signed) {
                     cardNumberToUse = cardNumberToUse.replace('*', 's');
                 }
@@ -273,10 +259,8 @@
             centralCardArea.classList.add('hidden'); // Hide central area
             finalGridArea.classList.remove('hidden'); // Show grid area
 
-            // Clear previous grid content
             cardGrid.innerHTML = '';
 
-            // Sort the opened cards
             openedCardsInBooster.sort((a, b) => {
                 const categoryA = getCardCategoryForSorting(a);
                 const categoryB = getCardCategoryForSorting(b);
@@ -285,7 +269,6 @@
                 return indexA - indexB;
             });
 
-            // Display cards in the grid
             openedCardsInBooster.forEach(cardInfo => {
                 const card = cardInfo.card;
                 const cardDiv = document.createElement('div');
@@ -309,16 +292,12 @@
         }
 
         function openNewBooster() {
-            // Hide final grid if visible
             finalGridArea.classList.add('hidden');
-            // Show central card area
             centralCardArea.classList.remove('hidden');
 
             const booster = openBooster(categorizedCards);
             
             boosterCardsFlat = [];
-            // Order of adding cards to boosterCardsFlat determines the revelation order
-            // Commons, Uncommons, Rares, Foil, TokenRune
             
             booster.Commons.forEach(card => {
                 if (card) boosterCardsFlat.push({ card: card, category: getCardCategoryForSorting({ card: card }) });
@@ -336,21 +315,18 @@
                 boosterCardsFlat.push({ card: booster.TokenRune, category: getCardCategoryForSorting({ card: booster.TokenRune }) });
             }
 
-            // Filter out any null entries from drawRandom
             boosterCardsFlat = boosterCardsFlat.filter(cardInfo => cardInfo.card !== null);
 
             openedCardsInBooster = [];
             currentCardToRevealIndex = 0;
             appState = "waiting_for_first_reveal";
 
-            // Display the initial card back at the larger size
             pileImage.src = getCardImageSrc(null, true, REVEALED_IMG_WIDTH, REVEALED_IMG_HEIGHT);
             cardNameLabel.textContent = "Click to reveal first card!";
         }
 
         // --- Initialization ---
         function initApp() {
-            // Fetch your actual card data from the local JSON file
             fetch('card_data/riftbound_origins.json')
                 .then(response => {
                     if (!response.ok) {
@@ -365,7 +341,7 @@
                     if (Object.values(categorizedCards).every(arr => arr.length === 0)) {
                         console.warn("No cards were loaded or categorized. Please ensure 'card_data/riftbound_origins.json' exists and contains valid data.");
                         cardNameLabel.textContent = "Error: No card data loaded.";
-                        pileImage.src = "https://placehold.co/400x560/FF0000/FFFFFF?text=ERROR"; // Placeholder for error
+                        pileImage.src = "https://placehold.co/400x560/FF0000/FFFFFF?text=ERROR";
                         openBoosterBtn.disabled = true;
                     } else {
                         openBoosterBtn.addEventListener('click', openNewBooster);
@@ -376,12 +352,11 @@
                 .catch(error => {
                     console.error('Error loading card data:', error);
                     cardNameLabel.textContent = `Error loading cards: ${error.message}`;
-                    pileImage.src = "https://placehold.co/400x560/FF0000/FFFFFF?text=LOAD+ERROR"; // Placeholder for error
+                    pileImage.src = "https://placehold.co/400x560/FF0000/FFFFFF?text=LOAD+ERROR";
                     openBoosterBtn.disabled = true;
                 });
         }
 
-        // Run the app initialization when the DOM is fully loaded
         document.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
