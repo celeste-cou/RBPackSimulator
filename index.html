@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riftbound Booster Opener</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font and background */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1e1e1e; /* Dark background */
+            color: white;
+        }
+        /* Hide scrollbar for a cleaner look, but allow scrolling */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+    <div id="app-container" class="flex flex-col items-center justify-center flex-grow p-4">
+        <!-- Central area for single card display during opening -->
+        <div id="central-card-area" class="flex flex-col items-center justify-center flex-grow">
+            <img id="pile-image" class="rounded-lg shadow-lg cursor-pointer transition-transform duration-200 hover:scale-105"
+                 src="" alt="Card Back" style="width: 400px; height: 560px;">
+            <p id="card-name" class="mt-4 text-xl font-bold text-center"></p>
+        </div>
+
+        <!-- Final grid display area (initially hidden) -->
+        <div id="final-grid-area" class="hidden flex-grow w-full overflow-y-auto hide-scrollbar p-4">
+            <div id="card-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 justify-items-center">
+                <!-- Cards will be injected here by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Button to open new booster -->
+    <div class="p-4 flex justify-center">
+        <button id="open-booster-btn"
+                class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg
+                       transition duration-200 ease-in-out transform hover:scale-105 active:scale-95">
+            Open New Booster
+        </button>
+    </div>
+
+    <script>
+        // --- Global Constants ---
+        const CARD_IMG_PATH = "card_img/OGN/"; 
+        const CARD_BACK_PATH = "card_img/Cardback.jpeg";
+        const IMG_WIDTH = 200;
+        const IMG_HEIGHT = 280;
+        const REVEALED_IMG_WIDTH = 400;
+        const REVEALED_IMG_HEIGHT = 560;
+
+        // Defines the order of categories for sorting cards in the final display grid.
+        const CATEGORY_SORT_ORDER = [
+            "Common", "Uncommon", "Rare", "Epic", "Legendary",
+            "Battlefield", "TokenRune", "LegendaryRune"
+        ];
+
+        // --- Mock Card Data (Replace with actual data loaded from JSON in a real scenario) ---
+        // In a real application, you'd fetch your 'riftbound_origins.json' here:
+        // For this example, we'll use a small, hardcoded set of mock data.
+        
+
+        // --- UI Elements ---
+        const centralCardArea = document.getElementById('central-card-area');
+        const finalGridArea = document.getElementById('final-grid-area');
+        const pileImage = document.getElementById('pile-image');
+        const cardNameLabel = document.getElementById('card-name');
+        const openBoosterBtn = document.getElementById('open-booster-btn');
+        const cardGrid = document.getElementById('card-grid');
+
+        // --- Application State ---
+        let categorizedCards = {};
+        let boosterCardsFlat = []; // All cards in the current booster, flattened and ordered for revelation
+        let openedCardsInBooster = []; // Cards that have been revealed and "stored"
+        let currentCardToRevealIndex = 0; // Index of the next card to reveal
+        let appState = "initial"; // "initial", "waiting_for_first_reveal", "card_revealed", "finished_revealing"
+        let cardData = [];
+
+        // --- Card Data Processing ---
+
+        function categorizeCards(cards) {
+            const cat = {
+                "Common": [], "Uncommon": [], "Rare": [], "Epic": [],
+                "Legendary": [], "Battlefield": [], "TokenRune": [], "LegendaryRune": []
+            };
+
+            cards.forEach(card => {
+                const isAltArt = card.is_alt_art || false;
+                const isOvernumbered = card.is_overnumbered || false;
+                const isSigned = card.is_signed || false;
+                const cardType = (card.type || "").toLowerCase();
+                const cardSuperType = (card.super_type || "").toLowerCase();
+                const rarity = (card.rarity || "").capitalize();
+                const isToken = (cardSuperType === "token");
+
+                if (isAltArt && cardType === "rune") {
+                    cat["LegendaryRune"].push(card);
+                    return;
+                }
+
+                if ((isOvernumbered || isSigned || isAltArt) && cardType !== "rune" && !isToken) {
+                    cat["Legendary"].push(card);
+                    return;
+                }
+
+                if (cardType === "battlefield") {
+                    cat["Battlefield"].push(card);
+                    return;
+                }
+
+                if (isToken || (cardType === "rune" && !isAltArt && !isOvernumbered && !isSigned)) {
+                    cat["TokenRune"].push(card);
+                    return;
+                }
+
+                if (rarity === "Epic") {
+                    cat["Epic"].push(card);
+                } else if (rarity === "Rare") {
+                    cat["Rare"].push(card);
+                } else if (rarity === "Uncommon") {
+                    if (cardType !== "battlefield" && !isToken) {
+                        cat["Uncommon"].push(card);
+                    }
+                } else if (rarity === "Common") {
+                    if (!isToken) {
+                        cat["Common"].push(card);
+                    }
+                }
+            });
+            return cat;
+        }
+
+        // Add a capitalize method to String prototype for convenience
+        if (!String.prototype.capitalize) {
+            String.prototype.capitalize = function() {
+                return this.charAt(0).toUpperCase() + this.slice(1);
+            }
+        }
+
+        // --- Booster Pack Generation Logic ---
+
+        function drawRandom(pool) {
+            return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : null;
+        }
+
+        function generateRareSlot(cat) {
+            const roll = Math.random();
+            if (roll < 0.0007) { // 0.07% chance for Signed or Overnumbered Legendary
+                return drawRandom(cat["Legendary"]) || drawRandom(cat["Epic"]) || drawRandom(cat["Rare"]);
+            } else if (roll < 0.007) { // 0.7% chance for Overnumbered Legendary
+                return drawRandom(cat["Legendary"]) || drawRandom(cat["Epic"]) || drawRandom(cat["Rare"]);
+            } else if (roll < 0.043) { // 4.3% chance for Alt Art Legendary
+                return drawRandom(cat["Legendary"]) || drawRandom(cat["Epic"]) || drawRandom(cat["Rare"]);
+            } else if (roll < 0.177) { // 17.7% chance for Epic
+                return drawRandom(cat["Epic"]) || drawRandom(cat["Rare"]);
+            }
+            return drawRandom(cat["Rare"]);
+        }
+
+        function generateFoilSlot(cat) {
+            const roll = Math.random();
+            if (roll < 0.002) { // 0.2% chance for Signed or Overnumbered Legendary
+                return drawRandom(cat["Legendary"]) || drawRandom(cat["Epic"]) || drawRandom(cat["Rare"]) || drawRandom(cat["Uncommon"]) || drawRandom(cat["Common"]);
+            } else if (roll < 0.008) { // 0.8% chance for Overnumbered Legendary
+                return drawRandom(cat["Legendary"]) || drawRandom(cat["Epic"]) || drawRandom(cat["Rare"]) || drawRandom(cat["Uncommon"]) || drawRandom(cat["Common"]);
+            } else if (roll < 0.03) { // 3% chance for Alt Art Legendary
+                return drawRandom(cat["Legendary"]) || drawRandom(cat["Epic"]) || drawRandom(cat["Rare"]) || drawRandom(cat["Uncommon"]) || drawRandom(cat["Common"]);
+            } else if (roll < 0.10) { // 10% chance for Epic
+                return drawRandom(cat["Epic"]) || drawRandom(cat["Rare"]) || drawRandom(cat["Uncommon"]) || drawRandom(cat["Common"]);
+            }
+            return drawRandom([...cat["Common"], ...cat["Uncommon"], ...cat["Rare"]]);
+        }
+
+        function generateTokenSlot(cat) {
+            const roll = Math.random();
+            if (roll < 0.003) { // 0.3% chance for Legendary Rune
+                return drawRandom(cat["LegendaryRune"]) || drawRandom(cat["TokenRune"]);
+            }
+            return drawRandom(cat["TokenRune"]);
+        }
+
+        function openBooster(cat) {
+            return {
+                "Commons": Array.from({ length: 7 }, () => drawRandom(cat["Common"])),
+                "Uncommons": Array.from({ length: 3 }, () => drawRandom(cat["Uncommon"])),
+                "Rares": Array.from({ length: 2 }, () => generateRareSlot(cat)),
+                "Foil": generateFoilSlot(cat),
+                "TokenRune": generateTokenSlot(cat)
+            };
+        }
+
+        // --- UI Management ---
+
+        function getCardImageSrc(card, isBack = false, width, height) {
+            if (isBack) {
+                return CARD_BACK_PATH;
+            } else {
+                let cardNumberToUse = card.card_number;
+                // Adjust card number for signed card filenames (* vs s)
+                if (card.is_signed) {
+                    cardNumberToUse = cardNumberToUse.replace('*', 's');
+                }
+                return `${CARD_IMG_PATH}${cardNumberToUse}.jpeg`;
+            }
+        }
+
+        function handleCardClick() {
+            if (appState === "waiting_for_first_reveal") {
+                revealNextCard();
+                appState = "card_revealed";
+            } else if (appState === "card_revealed") {
+                storeCurrentCard();
+                if (currentCardToRevealIndex < boosterCardsFlat.length) {
+                    revealNextCard(); // Directly reveal the next card
+                } else {
+                    appState = "finished_revealing";
+                    displayFinalGrid();
+                }
+            }
+        }
+
+        function revealNextCard() {
+            if (currentCardToRevealIndex < boosterCardsFlat.length) {
+                const cardInfo = boosterCardsFlat[currentCardToRevealIndex];
+                const card = cardInfo.card;
+                
+                pileImage.src = getCardImageSrc(card, false, REVEALED_IMG_WIDTH, REVEALED_IMG_HEIGHT);
+                cardNameLabel.textContent = `${card.card_number || ''} ${card.name || 'Unknown Card'}`;
+            } else {
+                cardNameLabel.textContent = "No more cards to reveal!";
+            }
+        }
+
+        function storeCurrentCard() {
+            if (currentCardToRevealIndex < boosterCardsFlat.length) {
+                const cardInfo = boosterCardsFlat[currentCardToRevealIndex];
+                openedCardsInBooster.push(cardInfo);
+                currentCardToRevealIndex++;
+            }
+        }
+
+        function getCardCategoryForSorting(cardData) {
+            const card = cardData.card;
+            const isAltArt = card.is_alt_art || false;
+            const isOvernumbered = card.is_overnumbered || false;
+            const isSigned = card.is_signed || false;
+            const cardType = (card.type || "").toLowerCase();
+            const cardSuperType = (card.super_type || "").toLowerCase();
+            const rarity = (card.rarity || "").capitalize();
+            const isToken = (cardSuperType === "token");
+
+            if (isAltArt && cardType === "rune") return "LegendaryRune";
+            if ((isOvernumbered || isSigned || isAltArt) && cardType !== "rune" && !isToken) return "Legendary";
+            if (cardType === "battlefield") return "Battlefield";
+            if (isToken || (cardType === "rune" && !isAltArt && !isOvernumbered && !isSigned)) return "TokenRune";
+            if (rarity === "Epic") return "Epic";
+            if (rarity === "Rare") return "Rare";
+            if (rarity === "Uncommon") return "Uncommon";
+            if (rarity === "Common") return "Common";
+            return "Unknown";
+        }
+
+        function displayFinalGrid() {
+            centralCardArea.classList.add('hidden'); // Hide central area
+            finalGridArea.classList.remove('hidden'); // Show grid area
+
+            // Clear previous grid content
+            cardGrid.innerHTML = '';
+
+            // Sort the opened cards
+            openedCardsInBooster.sort((a, b) => {
+                const categoryA = getCardCategoryForSorting(a);
+                const categoryB = getCardCategoryForSorting(b);
+                const indexA = CATEGORY_SORT_ORDER.indexOf(categoryA);
+                const indexB = CATEGORY_SORT_ORDER.indexOf(categoryB);
+                return indexA - indexB;
+            });
+
+            // Display cards in the grid
+            openedCardsInBooster.forEach(cardInfo => {
+                const card = cardInfo.card;
+                const cardDiv = document.createElement('div');
+                cardDiv.className = 'flex flex-col items-center p-2 bg-gray-800 rounded-lg shadow-md';
+
+                const img = document.createElement('img');
+                img.src = getCardImageSrc(card, false, IMG_WIDTH, IMG_HEIGHT);
+                img.alt = card.name || 'Unknown Card';
+                img.className = 'rounded-md';
+                img.style.width = `${IMG_WIDTH}px`;
+                img.style.height = `${IMG_HEIGHT}px`;
+
+                const nameP = document.createElement('p');
+                nameP.className = 'mt-2 text-sm text-center font-medium';
+                nameP.textContent = `${card.card_number || ''} ${card.name || 'Unknown Card'}`;
+
+                cardDiv.appendChild(img);
+                cardDiv.appendChild(nameP);
+                cardGrid.appendChild(cardDiv);
+            });
+        }
+
+        function openNewBooster() {
+            // Hide final grid if visible
+            finalGridArea.classList.add('hidden');
+            // Show central card area
+            centralCardArea.classList.remove('hidden');
+
+            const booster = openBooster(categorizedCards);
+            
+            boosterCardsFlat = [];
+            // Order of adding cards to boosterCardsFlat determines the revelation order
+            // Commons, Uncommons, Rares, Foil, TokenRune
+            
+            booster.Commons.forEach(card => {
+                if (card) boosterCardsFlat.push({ card: card, category: getCardCategoryForSorting({ card: card }) });
+            });
+            booster.Uncommons.forEach(card => {
+                if (card) boosterCardsFlat.push({ card: card, category: getCardCategoryForSorting({ card: card }) });
+            });
+            booster.Rares.forEach(card => {
+                if (card) boosterCardsFlat.push({ card: card, category: getCardCategoryForSorting({ card: card }) });
+            });
+            if (booster.Foil) {
+                boosterCardsFlat.push({ card: booster.Foil, category: getCardCategoryForSorting({ card: booster.Foil }) });
+            }
+            if (booster.TokenRune) {
+                boosterCardsFlat.push({ card: booster.TokenRune, category: getCardCategoryForSorting({ card: booster.TokenRune }) });
+            }
+
+            // Filter out any null entries from drawRandom
+            boosterCardsFlat = boosterCardsFlat.filter(cardInfo => cardInfo.card !== null);
+
+            openedCardsInBooster = [];
+            currentCardToRevealIndex = 0;
+            appState = "waiting_for_first_reveal";
+
+            // Display the initial card back at the larger size
+            pileImage.src = getCardImageSrc(null, true, REVEALED_IMG_WIDTH, REVEALED_IMG_HEIGHT);
+            cardNameLabel.textContent = "Click to reveal first card!";
+        }
+
+        // --- Initialization ---
+        function initApp() {
+            // Fetch your actual card data from the local JSON file
+            fetch('card_data/riftbound_origins.json')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    cardData = data; // Assign fetched data to cardData
+                    categorizedCards = categorizeCards(cardData);
+
+                    if (Object.values(categorizedCards).every(arr => arr.length === 0)) {
+                        console.warn("No cards were loaded or categorized. Please ensure 'card_data/riftbound_origins.json' exists and contains valid data.");
+                        cardNameLabel.textContent = "Error: No card data loaded.";
+                        pileImage.src = "https://placehold.co/400x560/FF0000/FFFFFF?text=ERROR"; // Placeholder for error
+                        openBoosterBtn.disabled = true;
+                    } else {
+                        openBoosterBtn.addEventListener('click', openNewBooster);
+                        pileImage.addEventListener('click', handleCardClick);
+                        openNewBooster(); // Start with the first booster
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading card data:', error);
+                    cardNameLabel.textContent = `Error loading cards: ${error.message}`;
+                    pileImage.src = "https://placehold.co/400x560/FF0000/FFFFFF?text=LOAD+ERROR"; // Placeholder for error
+                    openBoosterBtn.disabled = true;
+                });
+        }
+
+        // Run the app initialization when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
