@@ -99,11 +99,6 @@
                     return;
                 }
 
-                if (cardType === "battlefield") {
-                    cat["Battlefield"].push(card);
-                    return;
-                }
-
                 if (isToken || (cardType === "rune" && !isAltArt && !isOvernumbered && !isSigned)) {
                     cat["TokenRune"].push(card);
                     return;
@@ -114,9 +109,8 @@
                 } else if (rarity === "Rare") {
                     cat["Rare"].push(card);
                 } else if (rarity === "Uncommon") {
-                    if (cardType !== "battlefield" && !isToken) {
-                        cat["Uncommon"].push(card);
-                    }
+                    cat["Uncommon"].push(card);
+                    
                 } else if (rarity === "Common") {
                     if (!isToken) {
                         cat["Common"].push(card);
